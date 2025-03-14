@@ -2,12 +2,12 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 import math
-from statsmodels.stats.power import TTestIndPower
 import matplotlib.pyplot as plt
 from datetime import datetime
 import warnings
 
 warnings.filterwarnings(action='ignore', category=DeprecationWarning)
+
 
 # Function to analyze A/B test results
 def analyze_ab_test(file_path, start_date="2025-03-05", alpha=0.05):
@@ -63,8 +63,41 @@ def analyze_ab_test(file_path, start_date="2025-03-05", alpha=0.05):
         group_a_std = group_a_data.std(ddof=1)  # Using n-1 for sample standard deviation
         group_b_std = group_b_data.std(ddof=1)  # Using n-1 for sample standard deviation
 
+        # Calculate detailed statistics for boxplot
+        group_a_stats = {
+            'min': group_a_data.min(),
+            'q1': group_a_data.quantile(0.25),
+            'median': group_a_data.median(),
+            'q3': group_a_data.quantile(0.75),
+            'max': group_a_data.max(),
+            'iqr': group_a_data.quantile(0.75) - group_a_data.quantile(0.25),
+            'mean': group_a_mean
+        }
+
+        group_b_stats = {
+            'min': group_b_data.min(),
+            'q1': group_b_data.quantile(0.25),
+            'median': group_b_data.median(),
+            'q3': group_b_data.quantile(0.75),
+            'max': group_b_data.max(),
+            'iqr': group_b_data.quantile(0.75) - group_b_data.quantile(0.25),
+            'mean': group_b_mean
+        }
+
         print(f"Group A mean: {group_a_mean:.2f}, std: {group_a_std:.2f}")
         print(f"Group B mean: {group_b_mean:.2f}, std: {group_b_std:.2f}")
+
+        # Print boxplot statistics in a table format
+        print("\n===== Boxplot Statistics =====")
+        print(f"{'Statistic':<15} {'Group A':>10} {'Group B':>10}")
+        print("-" * 37)
+        print(f"{'Maximum':<15} {group_a_stats['max']:>10.2f} {group_b_stats['max']:>10.2f}")
+        print(f"{'3rd Quartile':<15} {group_a_stats['q3']:>10.2f} {group_b_stats['q3']:>10.2f}")
+        print(f"{'Median':<15} {group_a_stats['median']:>10.2f} {group_b_stats['median']:>10.2f}")
+        print(f"{'1st Quartile':<15} {group_a_stats['q1']:>10.2f} {group_b_stats['q1']:>10.2f}")
+        print(f"{'Minimum':<15} {group_a_stats['min']:>10.2f} {group_b_stats['min']:>10.2f}")
+        print(f"{'IQR':<15} {group_a_stats['iqr']:>10.2f} {group_b_stats['iqr']:>10.2f}")
+        print(f"{'Mean':<15} {group_a_stats['mean']:>10.2f} {group_b_stats['mean']:>10.2f}")
 
         # Calculate relative change
         rel_change = (group_b_mean - group_a_mean) / group_a_mean * 100
@@ -99,12 +132,10 @@ def analyze_ab_test(file_path, start_date="2025-03-05", alpha=0.05):
         else:
             effect_interpretation = "large"
 
-        # Calculate power
-        analysis = TTestIndPower()
-        power = analysis.power(effect_size=abs(cohens_d), nobs1=n1, alpha=alpha, ratio=n2 / n1)
-
         # Create results dictionary
         results = {
+            "group_a_stats": group_a_stats,
+            "group_b_stats": group_b_stats,
             "group_a_mean": group_a_mean,
             "group_b_mean": group_b_mean,
             "group_a_std": group_a_std,
@@ -115,8 +146,7 @@ def analyze_ab_test(file_path, start_date="2025-03-05", alpha=0.05):
             "confidence_interval": (ci_lower, ci_upper),
             "effect_size": cohens_d,
             "effect_interpretation": effect_interpretation,
-            "is_significant": p_value < alpha,
-            "statistical_power": power
+            "is_significant": p_value < alpha
         }
 
         # Print results
@@ -131,10 +161,19 @@ def analyze_ab_test(file_path, start_date="2025-03-05", alpha=0.05):
         print(f"p-value: {p_value:.4f}")
         print(f"Statistically significant (α={alpha})? {'Yes' if p_value < alpha else 'No'}")
         print(f"Cohen's d effect size: {cohens_d:.3f} ({effect_interpretation})")
-        print(f"Statistical power: {power:.3f}")
 
-        if power < 0.8:
-            print("Warning: Statistical power is below the recommended 0.8 threshold.")
+        # Check for significance and business significance (5% increase)
+        if p_value < alpha:
+            if rel_change >= 5:
+                print("✅ RESULT: Statistically significant improvement with at least 5% increase in Time on Page")
+                print("   Null hypothesis rejected - The alternative hypothesis is supported")
+            else:
+                print("⚠️ RESULT: Statistically significant improvement but effect is less than 5% increase")
+                print(
+                    "   Null hypothesis partially rejected - The improvement is statistically significant but does not meet business criteria")
+        else:
+            print("❓ RESULT: No statistically significant difference in Time on Page")
+            print("   Failed to reject the null hypothesis")
 
         # Visualize results
         plt.figure(figsize=(12, 8))
@@ -161,10 +200,13 @@ def analyze_ab_test(file_path, start_date="2025-03-05", alpha=0.05):
 
         # Add percentage change annotation
         max_height = max(group_a_mean, group_b_mean) + max(group_a_std / math.sqrt(n1), group_b_std / math.sqrt(n2))
-        plt.annotate(f'{rel_change:.1f}%',
+        color = 'green' if rel_change > 0 else 'red'
+        change_text = f"{rel_change:.1f}% {'↑' if rel_change > 0 else '↓'}"
+        plt.annotate(change_text,
                      xy=(1, group_b_mean),
                      xytext=(1.25, group_b_mean + max_height * 0.1),
-                     arrowprops=dict(arrowstyle='->'))
+                     arrowprops=dict(arrowstyle='->', color=color),
+                     color=color)
 
         # Boxplot for distribution comparison
         plt.subplot(2, 2, 4)
@@ -178,8 +220,8 @@ def analyze_ab_test(file_path, start_date="2025-03-05", alpha=0.05):
             patch.set_facecolor(color)
 
         plt.tight_layout()
-        plt.savefig('ab_test_results.png', dpi=300)
-        print("Visualization saved as 'ab_test_results.png'")
+        plt.savefig('time_on_page_results.png', dpi=300)
+        print("Visualization saved as 'time_on_page_results.png'")
 
         return results
 
@@ -193,27 +235,3 @@ def analyze_ab_test(file_path, start_date="2025-03-05", alpha=0.05):
 # Call the function with the uploaded Excel file
 # Using March 5, 2025 as the start date for the test
 results = analyze_ab_test('test_2_time_on_page.xlsx', start_date="2025-03-05")
-
-# Required sample size calculation for future tests
-if results:
-    # Calculate required sample size for 5% increase with 80% power
-    baseline_mean = results["group_a_mean"]
-    std_dev = results["group_a_std"]
-    effect_size = 0.05 * baseline_mean / std_dev  # 5% increase in standardized form
-
-    analysis = TTestIndPower()
-    sample_size = analysis.solve_power(effect_size=effect_size, power=0.8, alpha=0.05)
-
-    print("\n===== Sample Size Calculation for Future Tests =====")
-    print(f"To detect a 5% increase with 80% power at α=0.05:")
-    print(f"Required sample size per group: {math.ceil(sample_size)}")
-    print(f"Total required sample size: {math.ceil(sample_size * 2)}")
-
-    # Formula-based calculation for comparison
-    z_alpha = 1.96  # for α=0.05
-    z_beta = 0.84  # for power=0.8
-    delta = 0.05 * baseline_mean
-    sample_size_formula = math.ceil(2 * ((z_alpha + z_beta) ** 2 * std_dev ** 2) / delta ** 2)
-
-    print(f"Sample size using formula: {sample_size_formula} per group")
-    print(f"Total sample size using formula: {sample_size_formula * 2}")
