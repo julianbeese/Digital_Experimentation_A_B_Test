@@ -15,7 +15,7 @@ delta = target_time_on_page - baseline_time_on_page
 effect_size = delta / std_dev
 
 # Calculation of required sample size per group
-samples_per_group = math.ceil(2 * ((z_alpha + z_beta) / effect_size) ** 2)
+samples_per_group = math.ceil(((z_alpha + z_beta) / effect_size) ** 2)
 
 # Total sample size
 total_sample_size = samples_per_group * 2
