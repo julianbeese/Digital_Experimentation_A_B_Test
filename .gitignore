@@ -170,3 +170,7 @@ idea/
 # PyPI configuration file
 .pypirc
 .idea/
+
+# Python files
+abc_test.py
+power_calculation.py
